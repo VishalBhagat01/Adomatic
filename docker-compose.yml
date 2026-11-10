@@ -1,0 +1,204 @@
+services:
+  # ----------------------------------------------------------------------------
+  # Database Layer: MongoDB 7.0
+  # ----------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7.0
+    container_name: adpilot-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-adpilot_mongo_admin}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-adpilot}
+    volumes:
+      - mongodb_data:/data/db
+      - ./infrastructure/docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - adpilot-network
+
+  # ----------------------------------------------------------------------------
+  # Caching & Job Queue: Redis 7.2
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: adpilot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-adpilot_redis_pass}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-adpilot_redis_pass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - adpilot-network
+
+  # ----------------------------------------------------------------------------
+  # S3-Compatible Object Storage: MinIO
+  # ----------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: adpilot-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-adpilot_minio_user}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-adpilot_minio_secret_key}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - adpilot-network
+
+  # ----------------------------------------------------------------------------
+  # MinIO Bucket Provisioner
+  # ----------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: adpilot-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-adpilot_minio_user}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-adpilot_minio_secret_key}
+    volumes:
+      - ./infrastructure/docker/minio-init.sh:/minio-init.sh:ro
+    entrypoint: ["/bin/sh", "/minio-init.sh"]
+    networks:
+      - adpilot-network
+
+  # ----------------------------------------------------------------------------
+  # Application Services
+  # ----------------------------------------------------------------------------
+  agent:
+    build:
+      context: ./agent
+      dockerfile: ../infrastructure/docker/agent.Dockerfile
+    container_name: adpilot-agent
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:5000
+      - REDIS_URL=redis://:adpilot_redis_pass@redis:6379/0
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=adpilot_minio_user
+      - STORAGE_SECRET_KEY=adpilot_minio_secret_key
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - adpilot-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infrastructure/docker/backend.Dockerfile
+      target: dev
+    container_name: adpilot-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=development
+      - CORS_ORIGIN=http://localhost:5173
+      - LOG_LEVEL=info
+      - AGENT_SERVICE_URL=http://agent:8000
+      - MONGODB_URI=mongodb://adpilot_user:adpilot_password@mongodb:27017/adpilot?authSource=adpilot
+      - REDIS_URL=redis://:adpilot_redis_pass@redis:6379/0
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_REGION=us-east-1
+      - STORAGE_ACCESS_KEY=adpilot_minio_user
+      - STORAGE_SECRET_KEY=adpilot_minio_secret_key
+      - STORAGE_BUCKET_CREATIVES=adpilot-creatives
+      - STORAGE_BUCKET_ASSETS=adpilot-assets
+      - STORAGE_BUCKET_TEMP=adpilot-temp
+      - STORAGE_FORCE_PATH_STYLE=true
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'fetch(\"http://localhost:5000/health\").then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - adpilot-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infrastructure/docker/frontend.Dockerfile
+      target: dev
+    container_name: adpilot-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://localhost:5000
+      - VITE_AGENT_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - adpilot-network
+
+# ------------------------------------------------------------------------------
+# Persistent Storage Volumes
+# ------------------------------------------------------------------------------
+volumes:
+  mongodb_data:
+    name: adpilot_mongodb_data
+  redis_data:
+    name: adpilot_redis_data
+  minio_data:
+    name: adpilot_minio_data
+
+# ------------------------------------------------------------------------------
+# Isolated Bridge Network
+# ------------------------------------------------------------------------------
+networks:
+  adpilot-network:
+    name: adpilot-network
+    driver: bridge
