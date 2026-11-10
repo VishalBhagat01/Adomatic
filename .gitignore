@@ -1,0 +1,63 @@
+# Node & Frontend / Backend dependencies
+node_modules/
+.pnp
+.pnp.js
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python & Agent virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & Runtime
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & Secrets (NEVER COMMIT SENSITIVE VALUES)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+frontend/.env
+frontend/.env.local
+backend/.env
+backend/.env.local
+agent/.env
+agent/.env.local
+
+# IDE & System
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+.docker/
+
+.agents
+skills-lock.json

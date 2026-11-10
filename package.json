@@ -1,0 +1,30 @@
+{
+  "name": "adpilot-ai",
+  "version": "0.1.0",
+  "description": "AdPilot AI - AI-powered e-commerce advertising creative generation platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:agent": "powershell -Command \"if (Test-Path agent/.venv/Scripts/python.exe) { & agent/.venv/Scripts/python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir agent } else { python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir agent }\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "npm --prefix backend test",
+    "test:agent": "powershell -Command \"if (Test-Path agent/.venv/Scripts/pytest.exe) { & agent/.venv/Scripts/pytest.exe agent/tests -v } else { pytest agent/tests -v }\"",
+    "test": "npm run test:backend && npm run build:frontend"
+  },
+  "keywords": [
+    "adpilot",
+    "ecommerce",
+    "advertising",
+    "creative-generation",
+    "langgraph",
+    "fastapi",
+    "express",
+    "react",
+    "vite"
+  ],
+  "author": "AdPilot AI Team",
+  "license": "MIT"
+}
+
