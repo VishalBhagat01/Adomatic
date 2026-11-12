@@ -1,143 +1,147 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import {
-  Menu,
-  Search,
-  Bell,
-  RefreshCw,
-  Server,
-  Bot,
-  CheckCircle2,
-  AlertCircle,
-  Sparkles,
-} from 'lucide-react';
-import { Badge } from '../common/Badge';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { Menu, Search, RefreshCw, Server, Bot, Plus } from 'lucide-react';
 import { checkBackendHealth, checkAgentHealth } from '../../services/api';
+import { useStudio } from '../../context/StudioContext';
 
-const ROUTE_TITLES = {
-  '/': 'Executive Overview',
-  '/campaigns': 'Ad Campaigns',
-  '/creatives': 'Creative Studio',
-  '/brand-assets': 'Brand Kit & Assets',
-  '/analytics': 'Performance Analytics',
-  '/settings': 'System Settings',
-};
+function resolveSectionLabel(pathname) {
+  if (pathname === '/') return 'Dashboard';
+  if (pathname === '/campaigns/new') return 'Create Campaign';
+  if (pathname === '/campaigns') return 'Campaigns';
+  if (/^\/campaigns\/[^/]+\/workspace$/.test(pathname)) return 'Generation Workspace';
+  if (/^\/campaigns\/[^/]+$/.test(pathname)) return 'Campaign Details';
+  if (pathname === '/creatives') return 'Creative Gallery';
+  if (/^\/creatives\/[^/]+\/edit$/.test(pathname)) return 'Creative Editor';
+  if (pathname === '/analytics') return 'Analytics';
+  if (pathname === '/settings') return 'Settings';
+  return 'Studio';
+}
 
 export function Header({ onToggleSidebar }) {
   const location = useLocation();
-  const currentTitle = ROUTE_TITLES[location.pathname] || 'Dashboard';
+  const navigate = useNavigate();
+  const { globalSearch, setGlobalSearch } = useStudio();
+  const sectionLabel = resolveSectionLabel(location.pathname);
 
   const [backendStatus, setBackendStatus] = useState({ online: false, checking: true });
   const [agentStatus, setAgentStatus] = useState({ online: false, checking: true });
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  async function checkServices() {
+  const checkServices = useCallback(async () => {
     setIsRefreshing(true);
-    const [bRes, aRes] = await Promise.all([
-      checkBackendHealth(),
-      checkAgentHealth(),
-    ]);
+    const [bRes, aRes] = await Promise.all([checkBackendHealth(), checkAgentHealth()]);
     setBackendStatus({ online: bRes.online, checking: false, latency: bRes.latencyMs });
     setAgentStatus({ online: aRes.online, checking: false, latency: aRes.latencyMs });
     setIsRefreshing(false);
-  }
+  }, []);
 
   useEffect(() => {
     checkServices();
     const interval = setInterval(checkServices, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [checkServices]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (location.pathname !== '/campaigns') {
+      navigate('/campaigns');
+    }
+  };
 
   return (
-    <header className="h-16 bg-slate-950/70 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
+    <header className="h-16 bg-[#0b0e15]/95 border-b border-slate-800/80 backdrop-blur-sm sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 lg:hidden focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          aria-label="Open sidebar"
+          className="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 lg:hidden"
+          aria-label="Open navigation sidebar"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5" aria-hidden="true" />
         </button>
 
-        <div>
-          <h1 className="text-base sm:text-lg font-bold text-slate-100 font-['Plus_Jakarta_Sans']">
-            {currentTitle}
-          </h1>
-        </div>
+        <span className="text-sm font-medium text-slate-300 truncate">{sectionLabel}</span>
       </div>
 
-      {/* Middle: Quick search bar */}
-      <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
+      <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center flex-1 max-w-md mx-4">
         <div className="relative w-full">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search
+            className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            aria-hidden="true"
+          />
+          <label htmlFor="header-campaign-search" className="visually-hidden">
+            Search campaigns by name, prompt, or URL
+          </label>
           <input
-            type="text"
-            placeholder="Search campaigns, ad copy, creative templates..."
-            className="w-full bg-slate-900/80 border border-slate-800 rounded-lg pl-9 pr-4 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500 transition-colors"
+            id="header-campaign-search"
+            type="search"
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Search campaigns by title or product URL..."
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            className="w-full bg-[#090b10] border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
         </div>
-      </div>
+      </form>
 
-      {/* Right: Service Status Pills & User Profile */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Backend Status Pill */}
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
         <div
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px]"
-          title={`Backend Service: ${backendStatus.online ? 'Online' : 'Offline'}`}
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#0f131b] border border-slate-800 text-[11px]"
+          title={`Backend API: ${backendStatus.online ? `Online (${backendStatus.latency}ms)` : 'Offline'}`}
         >
-          <Server className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-slate-300 font-medium">API</span>
+          <Server className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+          <span className="text-slate-300">API</span>
           <span
             className={`w-2 h-2 rounded-full ${
-              backendStatus.online ? 'bg-emerald-400' : 'bg-rose-500'
+              backendStatus.checking
+                ? 'bg-slate-500'
+                : backendStatus.online
+                  ? 'bg-emerald-400'
+                  : 'bg-rose-500'
             }`}
+            aria-label={backendStatus.online ? 'Backend online' : 'Backend offline'}
           />
         </div>
 
-        {/* Agent Status Pill */}
         <div
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px]"
-          title={`Agent Service: ${agentStatus.online ? 'Online' : 'Offline'}`}
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#0f131b] border border-slate-800 text-[11px]"
+          title={`Python AI Agent: ${agentStatus.online ? `Online (${agentStatus.latency}ms)` : 'Offline'}`}
         >
-          <Bot className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="text-slate-300 font-medium">Agent</span>
+          <Bot className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
+          <span className="text-slate-300">Agent</span>
           <span
             className={`w-2 h-2 rounded-full ${
-              agentStatus.online ? 'bg-emerald-400' : 'bg-rose-500'
+              agentStatus.checking
+                ? 'bg-slate-500'
+                : agentStatus.online
+                  ? 'bg-emerald-400'
+                  : 'bg-rose-500'
             }`}
+            aria-label={agentStatus.online ? 'Agent online' : 'Agent offline'}
           />
         </div>
 
-        {/* Refresh health checks */}
         <button
           type="button"
           onClick={checkServices}
           disabled={isRefreshing}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          title="Refresh service health"
+          className="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/70"
+          title="Refresh service status"
+          aria-label="Refresh backend and agent service status"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} aria-hidden="true" />
         </button>
 
-        {/* Notifications */}
-        <button
-          type="button"
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 relative focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          aria-label="View notifications"
+        <Link
+          to="/campaigns/new"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors border border-indigo-500/40"
         >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-500 rounded-full" />
-        </button>
-
-        {/* User avatar */}
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm shadow-indigo-500/20">
-            AP
-          </div>
-        </div>
+          <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">New Campaign</span>
+        </Link>
       </div>
     </header>
   );
 }
-
