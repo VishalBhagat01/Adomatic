@@ -19,6 +19,10 @@ const envSchema = z.object({
     .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
     .default('info'),
   AGENT_SERVICE_URL: z.string().url().default('http://localhost:8000'),
+  ENABLE_VIDEO_GENERATION: z
+    .string()
+    .default('true')
+    .transform((val) => val.trim().toLowerCase() === 'true'),
 
   // Database (MongoDB)
   MONGODB_URI: z
@@ -45,6 +49,23 @@ const envSchema = z.object({
   STORAGE_BUCKET_ASSETS: z.string().default('adpilot-assets'),
   STORAGE_BUCKET_TEMP: z.string().default('adpilot-temp'),
   STORAGE_FORCE_PATH_STYLE: z
+    .string()
+    .default('true')
+    .transform((val) => val === 'true'),
+
+  // Meta Marketing API & Analytics
+  META_GRAPH_API_VERSION: z.string().default('v27.0'),
+  META_APP_ID: z.string().default(''),
+  META_APP_SECRET: z.string().default(''),
+  META_REDIRECT_URI: z.string().default('http://localhost:5000/api/meta/oauth/callback'),
+  META_FRONTEND_CALLBACK_URL: z.string().default('http://localhost:5173/settings'),
+  META_TOKEN_ENCRYPTION_KEY: z.string().default(''),
+  META_INSIGHTS_DEFAULT_ATTRIBUTION_WINDOWS: z.string().default('7d_click,1d_view'),
+  META_RATE_LIMIT_PAUSE_THRESHOLD: z
+    .string()
+    .default('80')
+    .transform((val) => Math.min(100, Math.max(10, parseInt(val, 10) || 80))),
+  META_ALLOW_FIXTURE_SYNC: z
     .string()
     .default('true')
     .transform((val) => val === 'true'),

@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { AppError, NotFoundError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { metricsService } from '../services/metricsService.js';
 
 export function notFoundHandler(req, res, next) {
   next(new NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));
@@ -34,6 +35,10 @@ export function errorHandler(err, req, res, next) {
     code,
     stack: err.stack,
   });
+
+  if (statusCode >= 500 || !isAppError) {
+    metricsService.reportError(err, { requestId: req.id, statusCode });
+  }
 
   res.status(statusCode).json(errorResponse);
 }

@@ -34,6 +34,14 @@ describe('Backend Smoke Tests', () => {
     assert.ok(['ok', 'degraded'].includes(res.body.data.status));
   });
 
+  test('GET /api/v1/agent-health returns 200 without crashing when agent is unreachable', async () => {
+    const res = await request(app).get('/api/v1/agent-health');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(typeof res.body.data.online, 'boolean');
+    assert.ok(['ok', 'degraded'].includes(res.body.data.status));
+  });
+
   test('GET /non-existent-route returns 404 with structured error', async () => {
     const res = await request(app).get('/non-existent-route');
     assert.strictEqual(res.statusCode, 404);

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { logger } from '../utils/logger.js';
+import { metricsService } from '../services/metricsService.js';
 
 export function requestLogger(req, res, next) {
   const startTime = process.hrtime.bigint();
@@ -10,6 +11,13 @@ export function requestLogger(req, res, next) {
   res.on('finish', () => {
     const endTime = process.hrtime.bigint();
     const durationMs = Number(endTime - startTime) / 1_000_000;
+
+    metricsService.recordHttpRequest({
+      method: req.method,
+      url: req.originalUrl || req.url,
+      statusCode: res.statusCode,
+      durationMs,
+    });
 
     const context = {
       requestId,

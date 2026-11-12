@@ -8,6 +8,10 @@ import {
   regenerateCampaign,
   deleteCampaign,
 } from '../controllers/campaignController.js';
+import {
+  getCampaignDetails,
+  streamCampaignEvents,
+} from '../controllers/studioController.js';
 import { validateRequest } from '../middleware/validateRequest.js';
 import { attachOwnershipContext } from '../middleware/ownership.js';
 import { campaignCreationLimiter } from '../middleware/rateLimiter.js';
@@ -56,6 +60,20 @@ router.get(
   '/:id/creatives',
   validateRequest(campaignIdParamSchema),
   getCampaignCreatives
+);
+
+// 5b. Get Full Consolidated Campaign Details
+router.get(
+  '/:id/details',
+  validateRequest(campaignIdParamSchema),
+  getCampaignDetails
+);
+
+// 5c. Stream Real-time Campaign Execution Events (SSE)
+router.get(
+  '/:id/events',
+  validateRequest(campaignIdParamSchema),
+  streamCampaignEvents
 );
 
 // 6. Regenerate Campaign

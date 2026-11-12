@@ -23,14 +23,26 @@ const adCopySchema = new mongoose.Schema(
       required: [true, 'Primary text is required'],
       trim: true,
     },
+    primaryTexts: {
+      type: [String],
+      default: [],
+    },
     headline: {
       type: String,
       required: [true, 'Headline is required'],
       trim: true,
     },
+    headlines: {
+      type: [String],
+      default: [],
+    },
     description: {
       type: String,
       trim: true,
+    },
+    descriptions: {
+      type: [String],
+      default: [],
     },
     callToAction: {
       type: String,
@@ -38,7 +50,23 @@ const adCopySchema = new mongoose.Schema(
     },
     platform: {
       type: String,
-      enum: ['meta', 'google', 'tiktok', 'instagram'],
+      trim: true,
+    },
+    placement: {
+      type: String,
+      trim: true,
+    },
+    creativeAngle: {
+      type: String,
+      trim: true,
+    },
+    audienceHypothesis: {
+      type: String,
+      trim: true,
+    },
+    supportingEvidence: {
+      type: [String],
+      default: [],
     },
     language: {
       type: String,

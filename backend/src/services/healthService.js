@@ -43,6 +43,36 @@ export class HealthService {
           configuredUrl: env.AGENT_SERVICE_URL,
         },
       },
+      features: {
+        videoGeneration: env.ENABLE_VIDEO_GENERATION,
+        imageOnlyMode: !env.ENABLE_VIDEO_GENERATION,
+      },
+    };
+  }
+
+  static getLivenessStatus() {
+    return {
+      status: 'alive',
+      service: 'adpilot-backend',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  static async getReadinessStatus() {
+    const full = await this.getHealthStatus();
+    const dbReady = full.infrastructure.database.status !== 'error';
+    const redisReady = full.infrastructure.cache_and_queue.status !== 'error';
+    const ready = dbReady && redisReady;
+    return {
+      ready,
+      status: ready ? 'ready' : 'not_ready',
+      checks: {
+        database: full.infrastructure.database.status,
+        redis: full.infrastructure.cache_and_queue.status,
+        storage: full.infrastructure.storage.status,
+      },
+      timestamp: full.timestamp,
     };
   }
 }

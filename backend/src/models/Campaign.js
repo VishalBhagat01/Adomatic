@@ -79,10 +79,39 @@ const campaignSchema = new mongoose.Schema(
     },
     userPrompt: {
       type: String,
-      required: [true, 'User prompt is required'],
+      required: [
+        function () {
+          return this.userPrompt === undefined || this.userPrompt === null;
+        },
+        'User prompt is required',
+      ],
       trim: true,
-      minlength: 5,
       maxlength: 2000,
+    },
+    productData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    productWarnings: {
+      type: [String],
+      default: [],
+    },
+    strategyData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    planData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    retryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    executionMetadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
     },
     formats: [
       {
@@ -123,7 +152,6 @@ const campaignSchema = new mongoose.Schema(
     errorMetadata: errorMetadataSchema,
     idempotencyKey: {
       type: String,
-      sparse: true,
     },
     jobId: {
       type: String,

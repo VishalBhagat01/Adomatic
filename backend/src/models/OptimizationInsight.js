@@ -10,12 +10,40 @@ const optimizationInsightSchema = new mongoose.Schema(
     campaignId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Campaign',
-      required: true,
+      default: null,
       index: true,
+    },
+    creativeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Creative',
+      default: null,
+      index: true,
+    },
+    metaAdId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    experimentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CreativeExperiment',
+      default: null,
     },
     insightType: {
       type: String,
-      enum: ['creative_fatigue', 'budget_allocation', 'audience_refinement', 'copy_variation'],
+      enum: [
+        'creative_fatigue',
+        'budget_allocation',
+        'audience_refinement',
+        'copy_variation',
+        'test_different_hook',
+        'expand_promising_concept',
+        'change_opening_scene',
+        'test_another_placement',
+        'improve_product_visibility',
+        'revise_ad_copy',
+        'insufficient_data_warning',
+      ],
       required: true,
       index: true,
     },
@@ -23,6 +51,18 @@ const optimizationInsightSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    observedEvidence: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({}),
+    },
+    sampleSizeWarning: {
+      type: String,
+      default: null,
+    },
+    correlationVsCausationNote: {
+      type: String,
+      default: null,
     },
     confidenceScore: {
       type: Number,

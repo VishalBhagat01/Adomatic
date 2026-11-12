@@ -1,6 +1,6 @@
 import { Queue, QueueEvents } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import { getRedisClient } from './redisClient.js';
+import { getRedisClient, registerRedisCleanupHandler } from './redisClient.js';
 import { logger } from '../utils/logger.js';
 
 export const QUEUES = {
@@ -130,14 +130,27 @@ export function getFailedJobsAudit(limit = 50) {
 }
 
 export async function closeAllQueues() {
+  const hadActive = activeQueues.size > 0 || activeQueueEvents.size > 0;
   for (const [name, queue] of activeQueues.entries()) {
-    await queue.close();
+    try {
+      await queue.close();
+    } catch {
+      // Ignore queue close errors during shutdown
+    }
   }
   for (const [name, events] of activeQueueEvents.entries()) {
-    await events.close();
+    try {
+      await events.close();
+    } catch {
+      // Ignore queue events close errors during shutdown
+    }
   }
   activeQueues.clear();
   activeQueueEvents.clear();
-  logger.info('All queues closed cleanly');
+  if (hadActive) {
+    logger.info('All queues closed cleanly');
+  }
 }
+
+registerRedisCleanupHandler(closeAllQueues);
 

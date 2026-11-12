@@ -1,4 +1,5 @@
 import { QUEUES, getQueue, buildJobMetadata, getJobLifecycle } from '../queue/queueManager.js';
+import { pingRedis } from '../queue/redisClient.js';
 import { logger } from '../utils/logger.js';
 
 export class CampaignQueue {
@@ -19,6 +20,11 @@ export class CampaignQueue {
     placements,
     idempotencyKey,
   }) {
+    const redisHealth = await pingRedis();
+    if (!redisHealth.reachable) {
+      throw new Error(`Redis unreachable at ${redisHealth.host}:${redisHealth.port}`);
+    }
+
     const queue = this.getQueueInstance();
 
     // Use deterministic jobId to prevent duplicate queueing of the same campaign execution

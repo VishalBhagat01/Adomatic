@@ -4,6 +4,13 @@ import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 let redisInstance = null;
+const cleanupHandlers = new Set();
+
+export function registerRedisCleanupHandler(handler) {
+  if (typeof handler === 'function') {
+    cleanupHandlers.add(handler);
+  }
+}
 
 function isPortOpen(host, port, timeout = 300) {
   return new Promise((resolve) => {
@@ -100,6 +107,13 @@ export async function pingRedis() {
 }
 
 export async function closeRedis() {
+  for (const handler of Array.from(cleanupHandlers)) {
+    try {
+      await handler();
+    } catch {
+      // Ignore cleanup errors during shutdown/test teardown
+    }
+  }
   if (redisInstance) {
     try {
       await redisInstance.quit();

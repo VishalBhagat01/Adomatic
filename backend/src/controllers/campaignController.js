@@ -2,7 +2,14 @@ import { CampaignService } from '../services/campaignService.js';
 
 export async function createCampaign(req, res, next) {
   try {
-    const { product_url, user_prompt, formats, placements } = req.body;
+    const {
+      product_url,
+      user_prompt,
+      formats,
+      placements,
+      preview_product_data,
+      reference_image_urls,
+    } = req.body;
     const idempotencyKey = req.headers['idempotency-key'] || null;
 
     const result = await CampaignService.createCampaign({
@@ -12,6 +19,8 @@ export async function createCampaign(req, res, next) {
       user_prompt,
       formats,
       placements,
+      preview_product_data,
+      reference_image_urls,
       idempotencyKey,
     });
 

@@ -34,3 +34,15 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden', details = null) {
+    super(message, 403, 'FORBIDDEN', details);
+  }
+}
+
+export class RateLimitError extends AppError {
+  constructor(message = 'External API rate limit exceeded', details = null) {
+    super(message, 429, 'RATE_LIMIT_EXCEEDED', details);
+  }
+}
+

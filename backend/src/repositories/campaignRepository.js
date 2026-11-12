@@ -143,6 +143,8 @@ export class CampaignRepository {
       );
     }
 
+    docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     const total = docs.length;
     const skip = (page - 1) * limit;
     const items = docs.slice(skip, skip + limit);
@@ -157,6 +159,73 @@ export class CampaignRepository {
         hasNextPage: page * limit < total,
         hasPrevPage: page > 1,
       },
+    };
+  }
+
+  /**
+   * Persist extracted product, strategy, creative plan, retry count, or execution metadata.
+   */
+  static async updateArtifacts(id, tenantId, patch = {}) {
+    if (isMongoConnected()) {
+      const query = { _id: id, isDeleted: false };
+      if (tenantId) query.tenantId = tenantId;
+      return await Campaign.findOneAndUpdate(
+        query,
+        { $set: { ...patch, updatedAt: new Date() } },
+        { new: true }
+      );
+    }
+
+    const doc = await this.findById(id, tenantId);
+    if (!doc) return null;
+    Object.assign(doc, patch, { updatedAt: new Date() });
+    return doc;
+  }
+
+  /**
+   * Aggregate real campaign summary metrics, status distribution, and recent stage activity.
+   */
+  static async getDashboardStats(tenantId, recentLimit = 5) {
+    let allCampaigns = [];
+
+    if (isMongoConnected()) {
+      const query = { isDeleted: false };
+      if (tenantId) query.tenantId = tenantId;
+      allCampaigns = await Campaign.find(query).sort({ createdAt: -1 }).limit(200);
+    } else {
+      allCampaigns = Array.from(memoryStore.values())
+        .filter((d) => !d.isDeleted && (!tenantId || d.tenantId === tenantId))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    const statusCounts = {};
+    const activityEvents = [];
+
+    for (const c of allCampaigns) {
+      const status = c.status || 'INITIALIZED';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+
+      const history = Array.isArray(c.stageHistory) ? c.stageHistory : [];
+      for (const entry of history) {
+        activityEvents.push({
+          campaignId: c.id || String(c._id),
+          campaignName: c.name || 'Untitled Campaign',
+          stage: entry.stage,
+          status: entry.status,
+          timestamp: entry.completedAt || entry.startedAt || c.updatedAt || c.createdAt,
+          error: entry.error || null,
+          metadata: entry.metadata || {},
+        });
+      }
+    }
+
+    activityEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return {
+      totalCampaigns: allCampaigns.length,
+      statusCounts,
+      recentCampaigns: allCampaigns.slice(0, recentLimit),
+      recentActivity: activityEvents.slice(0, 15),
     };
   }
 
@@ -342,6 +411,45 @@ export class CampaignRepository {
       startedAt: new Date().toISOString(),
     });
     return doc;
+  }
+
+  /**
+   * Find active non-terminal campaigns whose updatedAt timestamp indicates a stalled worker run.
+   */
+  static async findStalledCampaigns({
+    staleThresholdMs = 5 * 60 * 1000,
+    tenantId = null,
+    nowMs = Date.now(),
+  } = {}) {
+    const cutoff = new Date(nowMs - staleThresholdMs);
+    const activeStages = [
+      CAMPAIGN_STATUS.QUEUED,
+      CAMPAIGN_STATUS.EXTRACTING_PRODUCT,
+      CAMPAIGN_STATUS.ANALYZING_PRODUCT,
+      CAMPAIGN_STATUS.GENERATING_STRATEGY,
+      CAMPAIGN_STATUS.PLANNING_CREATIVES,
+      CAMPAIGN_STATUS.GENERATING_ASSETS,
+      CAMPAIGN_STATUS.EVALUATING_CREATIVES,
+      CAMPAIGN_STATUS.ASSEMBLING_CAMPAIGN,
+    ];
+
+    if (isMongoConnected()) {
+      const query = {
+        isDeleted: false,
+        status: { $in: activeStages },
+        updatedAt: { $lte: cutoff },
+      };
+      if (tenantId) query.tenantId = tenantId;
+      return await Campaign.find(query).limit(100);
+    }
+
+    return Array.from(memoryStore.values()).filter((doc) => {
+      if (doc.isDeleted) return false;
+      if (tenantId && doc.tenantId !== tenantId) return false;
+      if (!activeStages.includes(doc.status)) return false;
+      const updatedMs = new Date(doc.updatedAt || doc.createdAt).getTime();
+      return updatedMs <= cutoff.getTime();
+    });
   }
 
   static clearMemoryStore() {

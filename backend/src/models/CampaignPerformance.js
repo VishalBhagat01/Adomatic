@@ -60,6 +60,29 @@ const campaignPerformanceSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+    source: {
+      type: String,
+      default: 'meta_marketing_api',
+    },
+    currency: {
+      type: String,
+      default: 'USD',
+    },
+    linkClicks: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    purchaseValue: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    cpa: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
   },
   {
     timestamps: true,

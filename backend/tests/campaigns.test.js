@@ -2,18 +2,22 @@ import { test, describe, beforeEach, after } from 'node:test';
 import assert from 'node:assert';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { env } from '../src/config/env.js';
 import { CampaignRepository } from '../src/repositories/campaignRepository.js';
 import { closeRedis } from '../src/queue/redisClient.js';
 import { disconnectDatabase } from '../src/database/connection.js';
 
 describe('Campaign Management API Endpoints', () => {
   const app = createApp();
+  const initialVideoFlag = env.ENABLE_VIDEO_GENERATION;
 
   beforeEach(() => {
+    env.ENABLE_VIDEO_GENERATION = true;
     CampaignRepository.clearMemoryStore();
   });
 
   after(async () => {
+    env.ENABLE_VIDEO_GENERATION = initialVideoFlag;
     await closeRedis();
     await disconnectDatabase();
   });
@@ -157,6 +161,26 @@ describe('Campaign Management API Endpoints', () => {
     // Subsequent retrieval should return 404
     const getRes = await request(app).get(`/api/campaigns/${campaignId}`);
     assert.strictEqual(getRes.statusCode, 404);
+  });
+
+  test('POST /api/campaigns enforces image-only mode when ENABLE_VIDEO_GENERATION=false', async () => {
+    env.ENABLE_VIDEO_GENERATION = false;
+
+    const videoRes = await request(app).post('/api/campaigns').send({
+      ...validPayload,
+      formats: ['image', 'video'],
+    });
+    assert.strictEqual(videoRes.statusCode, 400);
+    assert.strictEqual(videoRes.body.success, false);
+    assert.match(videoRes.body.error.message, /Video generation is currently disabled/i);
+
+    const imageRes = await request(app).post('/api/campaigns').send({
+      ...validPayload,
+      formats: ['image'],
+      placements: ['instagram_feed'],
+    });
+    assert.strictEqual(imageRes.statusCode, 201);
+    assert.deepStrictEqual(imageRes.body.data.formats, ['image']);
   });
 });
 

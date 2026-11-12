@@ -227,9 +227,22 @@ export class StorageService {
    * Storage connectivity health check.
    */
   async getStorageHealth() {
+    let timerId = null;
     try {
-      // Test connectivity to the creatives bucket
-      await this.client.send(new HeadBucketCommand({ Bucket: STORAGE_BUCKETS.CREATIVES }));
+      const controller = new AbortController();
+      const timeoutPromise = new Promise((_, reject) => {
+        timerId = setTimeout(() => {
+          controller.abort();
+          reject(new Error('Storage health check timed out'));
+        }, 1200);
+      });
+      await Promise.race([
+        this.client.send(
+          new HeadBucketCommand({ Bucket: STORAGE_BUCKETS.CREATIVES }),
+          { abortSignal: controller.signal }
+        ),
+        timeoutPromise,
+      ]);
       return {
         status: 'ok',
         endpoint: env.STORAGE_ENDPOINT,
@@ -241,6 +254,8 @@ export class StorageService {
         endpoint: env.STORAGE_ENDPOINT,
         error: error.message,
       };
+    } finally {
+      if (timerId) clearTimeout(timerId);
     }
   }
 }

@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
+import { env } from '../config/env.js';
 import { CampaignRepository } from '../repositories/campaignRepository.js';
 import { CreativeRepository } from '../repositories/creativeRepository.js';
 import { CampaignQueue } from '../queues/campaignQueue.js';
+import { campaignOrchestrator } from './campaignOrchestrator.js';
 import { campaignEvents, CAMPAIGN_EVENTS } from '../events/campaignEvents.js';
 import { CAMPAIGN_STATUS, STAGE_PROGRESS } from '../models/Campaign.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
@@ -11,8 +13,8 @@ export class CampaignService {
   /**
    * Derive a deterministic idempotency key if not explicitly supplied by headers.
    */
-  static generateIdempotencyKey(tenantId, productUrl, userPrompt) {
-    const raw = `${tenantId}:${productUrl.trim()}:${userPrompt.trim().toLowerCase()}`;
+  static generateIdempotencyKey(tenantId, productUrl, userPrompt = '') {
+    const raw = `${tenantId}:${productUrl.trim()}:${String(userPrompt || '').trim().toLowerCase()}`;
     return crypto.createHash('sha256').update(raw).digest('hex');
   }
 
@@ -23,13 +25,22 @@ export class CampaignService {
     tenantId,
     userId,
     product_url,
-    user_prompt,
+    user_prompt = '',
     formats,
     placements,
+    preview_product_data = null,
+    reference_image_urls = null,
     idempotencyKey = null,
   }) {
+    if (!env.ENABLE_VIDEO_GENERATION && Array.isArray(formats) && formats.includes('video')) {
+      throw new BadRequestError(
+        'Video generation is currently disabled (ENABLE_VIDEO_GENERATION=false). Please select "image" format only.'
+      );
+    }
+
+    const cleanPrompt = typeof user_prompt === 'string' ? user_prompt.trim() : '';
     const finalIdempotencyKey =
-      idempotencyKey || this.generateIdempotencyKey(tenantId, product_url, user_prompt);
+      idempotencyKey || this.generateIdempotencyKey(tenantId, product_url, cleanPrompt);
 
     // 1. Idempotency Check: prevent duplicate campaign execution
     const existing = await CampaignRepository.findByIdempotencyKey(finalIdempotencyKey, tenantId);
@@ -41,25 +52,29 @@ export class CampaignService {
       };
     }
 
-    // 2. Derive a user-friendly name from prompt or URL
+    // 2. Derive a user-friendly name from previewed product title or URL
     const domain = new URL(product_url).hostname.replace(/^www\./, '');
-    const name = `${domain} — ${formats.join('/')} Campaign`;
+    const productTitle = preview_product_data?.product_name?.trim();
+    const name = productTitle
+      ? `${productTitle.slice(0, 64)} — ${formats.join('/')}`
+      : `${domain} — ${formats.join('/')} Campaign`;
 
-    // 3. Persist campaign in MongoDB
+    // 3. Persist campaign in MongoDB / memory store
     const campaign = await CampaignRepository.create({
       tenantId,
       userId,
       productUrl: product_url,
-      userPrompt: user_prompt,
+      userPrompt: cleanPrompt,
       formats,
       placements,
       name,
+      productData: preview_product_data || null,
       idempotencyKey: finalIdempotencyKey,
     });
 
     campaignEvents.emit(CAMPAIGN_EVENTS.CREATED, { campaignId: campaign.id, tenantId });
 
-    // 4. Transition to QUEUED and Enqueue into Redis BullMQ
+    // 4. Transition to QUEUED and Enqueue into Redis BullMQ + local orchestrator
     let job = null;
     try {
       await CampaignRepository.updateStage(campaign.id, tenantId, CAMPAIGN_STATUS.QUEUED);
@@ -70,7 +85,7 @@ export class CampaignService {
         tenantId,
         userId,
         productUrl: product_url,
-        userPrompt: user_prompt,
+        userPrompt: cleanPrompt,
         formats,
         placements,
         idempotencyKey: finalIdempotencyKey,
@@ -81,12 +96,17 @@ export class CampaignService {
         campaign.jobId = job.id;
       }
     } catch (queueError) {
-      // If queue service is unavailable locally, record error but preserve campaign record
       logger.warn(`Could not enqueue campaign ${campaign.id} to Redis: ${queueError.message}`);
     }
 
     campaign.status = CAMPAIGN_STATUS.QUEUED;
     campaign.progress = STAGE_PROGRESS[CAMPAIGN_STATUS.QUEUED];
+
+    // Dispatch live multi-stage execution asynchronously when enabled
+    campaignOrchestrator.scheduleCampaign(campaign.id, tenantId, {
+      preExtractedProduct: preview_product_data,
+      referenceImageUrls: reference_image_urls,
+    });
 
     return {
       campaign,
@@ -141,6 +161,24 @@ export class CampaignService {
   }
 
   /**
+   * Get consolidated campaign details (campaign, product, strategy, plan, creatives, adCopies).
+   */
+  static async getCampaignDetails(id, tenantId) {
+    const campaign = await this.getCampaignById(id, tenantId);
+    const creativeBundle = await CreativeRepository.findByCampaignId(id, tenantId);
+    return {
+      campaign,
+      product: campaign.productData || null,
+      productWarnings: campaign.productWarnings || [],
+      strategy: campaign.strategyData || null,
+      plan: campaign.planData || null,
+      creatives: creativeBundle.creatives,
+      adCopies: creativeBundle.adCopies,
+      count: creativeBundle.count,
+    };
+  }
+
+  /**
    * Regenerate a completed or failed campaign.
    */
   static async regenerateCampaign(id, tenantId) {
@@ -163,6 +201,7 @@ export class CampaignService {
       throw new BadRequestError(`Cannot regenerate campaign while in progress (${campaign.status})`);
     }
 
+    await CreativeRepository.archiveByCampaignId(id, tenantId);
     const updated = await CampaignRepository.resetForRegeneration(id, tenantId);
 
     try {
@@ -185,6 +224,7 @@ export class CampaignService {
     }
 
     campaignEvents.emit(CAMPAIGN_EVENTS.REGENERATED, { campaignId: id, tenantId });
+    campaignOrchestrator.scheduleCampaign(updated.id, tenantId);
 
     return updated;
   }
