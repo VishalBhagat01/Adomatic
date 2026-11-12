@@ -2,9 +2,9 @@
 // AdPilot AI — MongoDB Initialization & Collection Schema Validation
 // ==============================================================================
 
-const dbName = 'adpilot';
-const appUser = 'adpilot_user';
-const appPassword = 'adpilot_password';
+const dbName = process.env.MONGO_INITDB_DATABASE || 'adpilot';
+const appUser = process.env.MONGO_APP_USER || 'adpilot_user';
+const appPassword = process.env.MONGO_APP_PASSWORD || 'adpilot_password';
 
 const adminDb = db.getSiblingDB('admin');
 const targetDb = db.getSiblingDB(dbName);
@@ -103,8 +103,8 @@ targetDb.createCollection('campaigns', {
       required: ['tenantId', 'userId', 'name', 'status', 'createdAt', 'updatedAt'],
       properties: {
         tenantId: { bsonType: 'string' },
-        userId: { bsonType: 'string' },
-        productId: { bsonType: 'string' },
+        userId: { bsonType: ['objectId', 'string'] },
+        productId: { bsonType: ['objectId', 'string', 'null'] },
         name: { bsonType: 'string', minLength: 1 },
         objective: { enum: ['conversions', 'brand_awareness', 'traffic', 'retargeting'] },
         budget: {
@@ -118,10 +118,32 @@ targetDb.createCollection('campaigns', {
         },
         platforms: {
           bsonType: 'array',
-          items: { enum: ['meta', 'google', 'tiktok', 'instagram'] },
+          items: { bsonType: 'string' },
         },
         targetAudience: { bsonType: 'object' },
-        status: { enum: ['draft', 'generating', 'ready', 'active', 'paused', 'completed', 'failed'] },
+        status: {
+          enum: [
+            'INITIALIZED',
+            'QUEUED',
+            'EXTRACTING_PRODUCT',
+            'ANALYZING_PRODUCT',
+            'GENERATING_STRATEGY',
+            'PLANNING_CREATIVES',
+            'GENERATING_ASSETS',
+            'EVALUATING_CREATIVES',
+            'GENERATING_COPY',
+            'ASSEMBLING_CAMPAIGN',
+            'COMPLETED',
+            'FAILED',
+            'draft',
+            'generating',
+            'ready',
+            'active',
+            'paused',
+            'completed',
+            'failed',
+          ],
+        },
         createdAt: { bsonType: 'date' },
         updatedAt: { bsonType: 'date' },
       },
@@ -216,11 +238,11 @@ targetDb.createCollection('creatives', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['tenantId', 'campaignId', 'conceptId', 'assetType', 'storageKey', 'status', 'createdAt', 'updatedAt'],
+      required: ['tenantId', 'campaignId', 'assetType', 'storageKey', 'status', 'createdAt', 'updatedAt'],
       properties: {
         tenantId: { bsonType: 'string' },
-        campaignId: { bsonType: 'string' },
-        conceptId: { bsonType: 'string' },
+        campaignId: { bsonType: ['objectId', 'string'] },
+        conceptId: { bsonType: ['objectId', 'string', 'null'] },
         assetType: { enum: ['image', 'video'] },
         storageKey: { bsonType: 'string', minLength: 1 },
         bucket: { bsonType: 'string' },
@@ -228,12 +250,12 @@ targetDb.createCollection('creatives', {
         dimensions: {
           bsonType: 'object',
           properties: {
-            width: { bsonType: 'int' },
-            height: { bsonType: 'int' },
+            width: { bsonType: ['int', 'long', 'double', 'number'] },
+            height: { bsonType: ['int', 'long', 'double', 'number'] },
           },
         },
         fileSizeBytes: { bsonType: 'number', minimum: 0 },
-        status: { enum: ['generating', 'ready', 'failed', 'archived'] },
+        status: { enum: ['generating', 'ready', 'approved', 'rejected', 'failed', 'archived'] },
         createdAt: { bsonType: 'date' },
         updatedAt: { bsonType: 'date' },
       },
@@ -253,7 +275,7 @@ targetDb.createCollection('creative_evaluations', {
       required: ['tenantId', 'creativeId', 'overallScore', 'createdAt', 'updatedAt'],
       properties: {
         tenantId: { bsonType: 'string' },
-        creativeId: { bsonType: 'string' },
+        creativeId: { bsonType: ['objectId', 'string'] },
         visualScore: { bsonType: 'number', minimum: 0, maximum: 100 },
         complianceScore: { bsonType: 'number', minimum: 0, maximum: 100 },
         predictedCtr: { bsonType: 'number', minimum: 0 },
@@ -278,13 +300,13 @@ targetDb.createCollection('ad_copies', {
       required: ['tenantId', 'campaignId', 'primaryText', 'headline', 'createdAt', 'updatedAt'],
       properties: {
         tenantId: { bsonType: 'string' },
-        campaignId: { bsonType: 'string' },
-        creativeId: { bsonType: 'string' },
+        campaignId: { bsonType: ['objectId', 'string'] },
+        creativeId: { bsonType: ['objectId', 'string', 'null'] },
         primaryText: { bsonType: 'string', minLength: 1 },
         headline: { bsonType: 'string', minLength: 1 },
         description: { bsonType: 'string' },
         callToAction: { bsonType: 'string' },
-        platform: { enum: ['meta', 'google', 'tiktok', 'instagram'] },
+        platform: { bsonType: 'string' },
         language: { bsonType: 'string', minLength: 2, maxLength: 5 },
         createdAt: { bsonType: 'date' },
         updatedAt: { bsonType: 'date' },
@@ -329,11 +351,26 @@ targetDb.createCollection('optimization_insights', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['tenantId', 'campaignId', 'insightType', 'recommendation', 'confidenceScore', 'createdAt', 'updatedAt'],
+      required: ['tenantId', 'insightType', 'recommendation', 'confidenceScore', 'createdAt', 'updatedAt'],
       properties: {
         tenantId: { bsonType: 'string' },
-        campaignId: { bsonType: 'string' },
-        insightType: { enum: ['creative_fatigue', 'budget_allocation', 'audience_refinement', 'copy_variation'] },
+        campaignId: { bsonType: ['objectId', 'string', 'null'] },
+        creativeId: { bsonType: ['objectId', 'string', 'null'] },
+        insightType: {
+          enum: [
+            'creative_fatigue',
+            'budget_allocation',
+            'audience_refinement',
+            'copy_variation',
+            'test_different_hook',
+            'expand_promising_concept',
+            'change_opening_scene',
+            'test_another_placement',
+            'improve_product_visibility',
+            'revise_ad_copy',
+            'insufficient_data_warning',
+          ],
+        },
         recommendation: { bsonType: 'string', minLength: 1 },
         confidenceScore: { bsonType: 'number', minimum: 0, maximum: 1 },
         impactLevel: { enum: ['low', 'medium', 'high'] },

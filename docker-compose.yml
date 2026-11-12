@@ -45,11 +45,11 @@ services:
     networks:
       - adpilot-network
 
-  # ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
   # S3-Compatible Object Storage: MinIO
   # ----------------------------------------------------------------------------
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: pgsty/minio:latest
     container_name: adpilot-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -74,7 +74,7 @@ services:
   # MinIO Bucket Provisioner
   # ----------------------------------------------------------------------------
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:latest
     container_name: adpilot-minio-init
     depends_on:
       minio:
@@ -109,11 +109,31 @@ services:
       - STORAGE_ENDPOINT=http://minio:9000
       - STORAGE_ACCESS_KEY=adpilot_minio_user
       - STORAGE_SECRET_KEY=adpilot_minio_secret_key
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+      - GROQ_FALLBACK_MODELS=${GROQ_FALLBACK_MODELS:-openai/gpt-oss-20b,qwen/qwen3.8-27b}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}
+      - GROQ_MAX_VISION_IMAGES=${GROQ_MAX_VISION_IMAGES:-2}
+      - ENABLE_VIDEO_GENERATION=${ENABLE_VIDEO_GENERATION:-true}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+      - GEMINI_FALLBACK_MODELS=${GEMINI_FALLBACK_MODELS:-gemini-3.5-flash-lite}
+      - IMAGE_PROVIDER=${IMAGE_PROVIDER:-auto}
+      - POLLINATIONS_MODEL=${POLLINATIONS_MODEL:-flux}
+      - HF_API_KEY=${HF_API_KEY:-}
+      - HF_IMAGE_MODEL=${HF_IMAGE_MODEL:-black-forest-labs/FLUX.1-schnell}
+      - IMAGE_GEN_TIMEOUT_SECONDS=${IMAGE_GEN_TIMEOUT_SECONDS:-60.0}
+      - IMAGE_GEN_MAX_RETRIES=${IMAGE_GEN_MAX_RETRIES:-2}
+      - GEMINI_IMAGE_MODEL=${GEMINI_IMAGE_MODEL:-gemini-3.1-flash-image}
+      - GEMINI_VIDEO_MODEL=${GEMINI_VIDEO_MODEL:-veo-3.1-fast-generate-preview}
     depends_on:
       redis:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -148,6 +168,10 @@ services:
       - STORAGE_BUCKET_ASSETS=adpilot-assets
       - STORAGE_BUCKET_TEMP=adpilot-temp
       - STORAGE_FORCE_PATH_STYLE=true
+      - META_APP_ID=${META_APP_ID:-}
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - META_TOKEN_ENCRYPTION_KEY=${META_TOKEN_ENCRYPTION_KEY:-}
+      - META_ALLOW_FIXTURE_SYNC=${META_ALLOW_FIXTURE_SYNC:-true}
     depends_on:
       mongodb:
         condition: service_healthy
@@ -155,6 +179,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       agent:
         condition: service_healthy
     healthcheck:
