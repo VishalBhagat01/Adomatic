@@ -36,11 +36,22 @@ app.add_middleware(
 )
 
 
+_agent_metrics = {
+    "requests_total": 0,
+    "errors_5xx": 0,
+    "latency_ms_sum": 0.0,
+}
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration_ms = round((time.time() - start_time) * 1000, 2)
+    _agent_metrics["requests_total"] += 1
+    _agent_metrics["latency_ms_sum"] += duration_ms
+    if response.status_code >= 500:
+        _agent_metrics["errors_5xx"] += 1
     logger.info(
         f"HTTP {request.method} {request.url.path} {response.status_code} - {duration_ms}ms",
         extra={
@@ -53,6 +64,24 @@ async def log_requests(request: Request, call_next):
         },
     )
     return response
+
+
+@app.get("/metrics", tags=["Observability"])
+async def get_agent_metrics():
+    total = _agent_metrics["requests_total"]
+    avg_latency = round(_agent_metrics["latency_ms_sum"] / total, 2) if total > 0 else 0.0
+    return {
+        "service": settings.APP_NAME,
+        "environment": settings.ENVIRONMENT,
+        "requests_total": total,
+        "errors_5xx": _agent_metrics["errors_5xx"],
+        "avg_latency_ms": avg_latency,
+        "configured_models": {
+            "strategy_model": settings.GEMINI_MODEL,
+            "image_model": settings.GEMINI_IMAGE_MODEL,
+            "video_model": settings.GEMINI_VIDEO_MODEL,
+        },
+    }
 
 
 # Direct health check endpoint

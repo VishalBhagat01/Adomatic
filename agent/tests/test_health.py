@@ -29,3 +29,28 @@ def test_not_found():
     response = client.get("/non-existent")
     assert response.status_code == 404
 
+
+def test_settings_accepts_comma_separated_cors_origins_env(monkeypatch):
+    from agent.app.core.config import Settings
+
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173, https://studio.example.com")
+    cfg = Settings()
+    assert cfg.CORS_ORIGINS == ["http://localhost:5173", "https://studio.example.com"]
+
+
+def test_agent_entrypoint_importable_from_agent_dir():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    agent_dir = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-c", "import app.main; assert app.main.app.title == 'adpilot-agent'"],
+        cwd=str(agent_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, f"stderr: {proc.stderr}\nstdout: {proc.stdout}"
+
+
